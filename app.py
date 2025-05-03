@@ -11,6 +11,8 @@ from langchain.prompts import PromptTemplate
 import tempfile
 from typing import Dict, List
 import pdfplumber
+import pandas as pd
+import matplotlib.pyplot as plt
 
 # Load environment variables
 load_dotenv()
@@ -122,6 +124,74 @@ def main():
 
             finally:
                 os.unlink(pdf_path)
+
+    st.title("S&P 500 Investment Simulator")
+
+    # User input
+    start_year = st.number_input(
+        "Enter the starting year (between 1924 and 2050):",
+        min_value=1924, max_value=2050, value=2020, step=1
+    )
+
+    # Load data
+    CSV_PATH = "data/spy500_history.csv"
+    df = pd.read_csv(CSV_PATH)
+    df = df[["Year", "Annual_Return", "Dividend_Ratio"]]
+    df = df.dropna(subset=["Year"]).copy()
+    df["Year"] = df["Year"].astype(int)
+
+    # Prepare simulation years
+    years = list(range(start_year, 2051))
+
+    # Build a lookup for returns
+    returns = {}
+    for _, row in df.iterrows():
+        year = int(row["Year"])
+        returns[year] = {
+            "annual_return": float(row.get("Annual_Return", 0)) / 100,
+            "dividend_ratio": float(row.get("Dividend_Ratio", 0)) / 100,
+        }
+
+    # Simulation
+    INITIAL_DEPOSIT = 100_000
+    DEFAULT_ANNUAL_RETURN = 0.10
+    DEFAULT_DIVIDEND_RATIO = 0.02
+    LAST_DATA_YEAR = 2025
+    END_YEAR = 2050
+    balance = INITIAL_DEPOSIT
+    results = []
+    for year in years:
+        if year in returns and year <= LAST_DATA_YEAR:
+            annual_return = returns[year]["annual_return"]
+            dividend_ratio = returns[year]["dividend_ratio"]
+        else:
+            annual_return = DEFAULT_ANNUAL_RETURN
+            dividend_ratio = DEFAULT_DIVIDEND_RATIO
+        total_return = annual_return + dividend_ratio
+        balance = balance * (1 + total_return)
+        results.append({
+            "Year": year,
+            "Annual Return": f"{annual_return*100:.2f}%",
+            "Dividend Ratio": f"{dividend_ratio*100:.2f}%",
+            "Total Return": f"{total_return*100:.2f}%",
+            "Balance": balance
+        })
+
+    results_df = pd.DataFrame(results)
+
+    # Show table
+    st.subheader("Simulation Results")
+    st.dataframe(results_df.style.format({"Balance": "${:,.2f}"}), use_container_width=True)
+
+    # Plot
+    st.subheader("Balance Over Time")
+    fig, ax = plt.subplots()
+    ax.plot(results_df["Year"], results_df["Balance"], marker="o")
+    ax.set_xlabel("Year")
+    ax.set_ylabel("Balance ($)")
+    ax.set_title("S&P 500 Investment Growth")
+    ax.grid(True)
+    st.pyplot(fig)
 
 if __name__ == "__main__":
     main()
